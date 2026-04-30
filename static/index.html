@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NEXUS — Laptop Store Management</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:        #050810;
+  --bg2:       #080d1a;
+  --bg3:       #0d1428;
+  --panel:     rgba(10,18,40,0.85);
+  --border:    rgba(0,210,255,0.18);
+  --border-hi: rgba(0,210,255,0.55);
+  --cyan:      #00d2ff;
+  --cyan2:     #00ffe7;
+  --pink:      #ff2d7a;
+  --gold:      #f5c518;
+  --green:     #00ff88;
+  --red:       #ff3b5c;
+  --text:      #c8daf5;
+  --text-dim:  #5a7494;
+  --text-hi:   #ffffff;
+  --glow-c:    0 0 12px rgba(0,210,255,0.6), 0 0 40px rgba(0,210,255,0.2);
+  --glow-p:    0 0 12px rgba(255,45,122,0.6), 0 0 40px rgba(255,45,122,0.15);
+  --glow-g:    0 0 12px rgba(0,255,136,0.5), 0 0 30px rgba(0,255,136,0.1);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 15px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Background Grid ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(rgba(0,210,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,210,255,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0,100,200,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.page-wrap { position: relative; z-index: 1; }
+
+/* ── Header ── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 40px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(5,8,16,0.9);
+  backdrop-filter: blur(20px);
+  position: sticky; top: 0; z-index: 100;
+}
+
+.logo {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 900; font-size: 1.6rem;
+  letter-spacing: 0.12em;
+  color: var(--cyan);
+  text-shadow: var(--glow-c);
+  display: flex; align-items: center; gap: 12px;
+}
+.logo-icon { font-size: 1.4rem; }
+.logo span { color: var(--pink); text-shadow: var(--glow-p); }
+
+.header-status {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--green);
+  display: flex; align-items: center; gap: 8px;
+}
+.pulse-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green); box-shadow: var(--glow-g);
+  animation: pulse 1.8s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+
+.header-base {
+  font-family: 'Share Tech Mono', monospace; font-size: 0.72rem;
+  color: var(--text-dim); display: flex; align-items: center; gap: 6px;
+}
+.base-url-badge {
+  background: rgba(0,210,255,0.08);
+  border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: 4px;
+  color: var(--cyan); cursor: pointer;
+}
+.base-url-badge:hover { border-color: var(--cyan); }
+
+/* ── Main Layout ── */
+.main { display: flex; height: calc(100vh - 62px); }
+
+/* ── Sidebar Nav ── */
+nav {
+  width: 230px; flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: rgba(5,8,16,0.7);
+  backdrop-filter: blur(10px);
+  padding: 28px 0;
+  overflow-y: auto;
+}
+
+.nav-section-label {
+  font-family: 'Share Tech Mono', monospace; font-size: 0.62rem;
+  color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase;
+  padding: 0 22px 8px;
+  margin-top: 16px;
+}
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 22px;
+  cursor: pointer; transition: all 0.2s;
+  border-left: 3px solid transparent;
+  font-weight: 600; font-size: 0.88rem; letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+.nav-item:hover { color: var(--text-hi); background: rgba(0,210,255,0.05); border-left-color: rgba(0,210,255,0.3); }
+.nav-item.active { color: var(--cyan); background: rgba(0,210,255,0.08); border-left-color: var(--cyan); }
+.nav-item .icon { font-size: 1rem; width: 20px; text-align: center; }
+
+/* ── Content Area ── */
+.content {
+  flex: 1; overflow-y: auto; padding: 32px 36px;
+}
+
+/* ── Section ── */
+.section { display: none; }
+.section.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+.section-header {
+  display: flex; align-items: flex-end; gap: 16px; margin-bottom: 28px;
+}
+.section-title {
+  font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 1.4rem;
+  color: var(--text-hi); letter-spacing: 0.08em;
+}
+.section-title span { color: var(--cyan); }
+.section-badge {
+  font-family: 'Share Tech Mono', monospace; font-size: 0.65rem;
+  background: rgba(0,210,255,0.1); border: 1px solid var(--border);
+  color: var(--cyan); padding: 3px 8px; border-radius: 3px; margin-bottom: 4px;
+}
+
+/* ── Cards / Panels ── */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(8px);
+  position: relative; overflow: hidden;
+}
+.panel::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0.4;
+}
+
+.panel-title {
+  font-family: 'Orbitron', sans-serif; font-size: 0.75rem; font-weight: 600;
+  color: var(--cyan); letter-spacing: 0.12em; text-transform: uppercase;
+  margin-bottom: 18px; display: flex; align-items: center; gap: 8px;
+}
+.panel-title::after {
+  content: ''; flex: 1; height: 1px;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+/* ── Form ── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-group.full { grid-column: 1/-1; }
+
+label {
+  font-family: 'Share Tech Mono', monospace; font-size: 0.68rem;
+  color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase;
+}
+
+input, select {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  color: var(--text-hi);
+  padding: 9px 13px;
+  border-radius: 5px;
+  font-family: 'Rajdhani', sans-serif; font-size: 0.95rem; font-weight: 500;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+input:focus, select:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(0,210,255,0.12);
+}
+select option { background: #0d1428; }
+
+/* ── Buttons ── */
+.btn {
+  font-family: 'Orbitron', sans-serif; font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 10px 22px; border-radius: 5px; cursor: pointer;
+  border: 1px solid; transition: all 0.2s; position: relative; overflow: hidden;
+}
+.btn::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 50%);
+  opacity: 0; transition: opacity 0.2s;
+}
+.btn:hover::before { opacity: 1; }
+
+.btn-primary { background: rgba(0,210,255,0.12); border-color: var(--cyan); color: var(--cyan); }
+.btn-primary:hover { background: rgba(0,210,255,0.22); box-shadow: var(--glow-c); }
+
+.btn-danger { background: rgba(255,59,92,0.1); border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: rgba(255,59,92,0.2); box-shadow: var(--glow-p); }
+
+.btn-success { background: rgba(0,255,136,0.1); border-color: var(--green); color: var(--green); }
+.btn-success:hover { background: rgba(0,255,136,0.2); box-shadow: var(--glow-g); }
+
+.btn-gold { background: rgba(245,197,24,0.1); border-color: var(--gold); color: var(--gold); }
+.btn-gold:hover { background: rgba(245,197,24,0.18); box-shadow: 0 0 12px rgba(245,197,24,0.4); }
+
+.btn-row { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+
+/* ── Table ── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead tr { border-bottom: 1px solid rgba(0,210,255,0.25); }
+th {
+  font-family: 'Share Tech Mono', monospace; font-size: 0.65rem;
+  color: var(--cyan); letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 10px 12px; text-align: left; white-space: nowrap;
+}
+td {
+  padding: 11px 12px; font-size: 0.9rem; color: var(--text);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  vertical-align: middle;
+}
+tr:hover td { background: rgba(0,210,255,0.04); }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 3px;
+  font-family: 'Share Tech Mono', monospace; font-size: 0.65rem;
+  letter-spacing: 0.06em; font-weight: 600;
+}
+.badge-cat { background: rgba(0,210,255,0.12); border: 1px solid rgba(0,210,255,0.3); color: var(--cyan); }
+.badge-success { background: rgba(0,255,136,0.12); border: 1px solid rgba(0,255,136,0.3); color: var(--green); }
+.badge-fail { background: rgba(255,59,92,0.12); border: 1px solid rgba(255,59,92,0.3); color: var(--red); }
+.badge-completed { background: rgba(0,255,136,0.12); border: 1px solid rgba(0,255,136,0.3); color: var(--green); }
+
+.stock-low { color: var(--red); font-weight: 700; }
+.stock-ok  { color: var(--green); }
+
+/* ── Response Box ── */
+.response-box {
+  margin-top: 18px; padding: 16px;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--border);
+  border-radius: 6px; min-height: 60px;
+  font-family: 'Share Tech Mono', monospace; font-size: 0.8rem;
+  color: var(--text-dim); white-space: pre-wrap; word-break: break-all;
+  line-height: 1.6; max-height: 240px; overflow-y: auto;
+  transition: border-color 0.3s;
+}
+.response-box.success { border-color: var(--green); color: var(--green); }
+.response-box.error   { border-color: var(--red);   color: var(--red); }
+.response-box.loading { border-color: var(--cyan);  color: var(--cyan); }
+
+/* ── Dashboard Cards ── */
+.stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 28px; }
+.stat-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px; text-align: center;
+  position: relative; overflow: hidden; cursor: default;
+  transition: border-color 0.3s, transform 0.2s;
+}
+.stat-card:hover { border-color: var(--border-hi); transform: translateY(-2px); }
+.stat-card::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+}
+.stat-card.c1::after { background: var(--cyan); }
+.stat-card.c2::after { background: var(--pink); }
+.stat-card.c3::after { background: var(--green); }
+.stat-card.c4::after { background: var(--gold); }
+
+.stat-num {
+  font-family: 'Orbitron', sans-serif; font-size: 2rem; font-weight: 900;
+  color: var(--text-hi); line-height: 1.1; margin-bottom: 4px;
+}
+.stat-lbl {
+  font-family: 'Share Tech Mono', monospace; font-size: 0.65rem;
+  color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase;
+}
+.stat-card.c1 .stat-num { color: var(--cyan); text-shadow: var(--glow-c); }
+.stat-card.c2 .stat-num { color: var(--pink); text-shadow: var(--glow-p); }
+.stat-card.c3 .stat-num { color: var(--green); text-shadow: var(--glow-g); }
+.stat-card.c4 .stat-num { color: var(--gold); }
+
+/* ── Loading Spinner ── */
+.spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid rgba(0,210,255,0.2);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle; margin-right: 6px;
+}
+@keyframes spin { to{ transform: rotate(360deg) } }
+
+/* ── Toast ── */
+#toast {
+  position: fixed; bottom: 30px; right: 30px; z-index: 999;
+  font-family: 'Share Tech Mono', monospace; font-size: 0.78rem;
+  padding: 12px 20px; border-radius: 6px;
+  border: 1px solid var(--green); background: rgba(0,20,12,0.95);
+  color: var(--green); box-shadow: var(--glow-g);
+  transform: translateY(80px); opacity: 0;
+  transition: transform 0.3s, opacity 0.3s;
+  pointer-events: none;
+}
+#toast.show { transform: translateY(0); opacity: 1; }
+#toast.error { border-color: var(--red); background: rgba(20,0,5,0.95); color: var(--red); box-shadow: var(--glow-p); }
+
+/* ── URL Modal ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg3); border: 1px solid var(--border-hi);
+  border-radius: 10px; padding: 30px; width: 460px;
+  box-shadow: var(--glow-c);
+}
+.modal-title { font-family: 'Orbitron', sans-serif; font-size: 0.9rem; color: var(--cyan); margin-bottom: 14px; letter-spacing: 0.1em; }
+.modal input { width: 100%; margin-bottom: 14px; }
+.modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,210,255,0.25); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,210,255,0.5); }
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+  .form-grid.cols-3 { grid-template-columns: 1fr 1fr; }
+  nav { width: 52px; }
+  nav .nav-item span { display: none; }
+  .nav-section-label { display: none; }
+  header { padding: 14px 20px; }
+  .content { padding: 20px 16px; }
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <span class="logo-icon">⬡</span>
+    NEX<span>US</span>
+  </div>
+  <div class="header-base">
+    BASE URL:
+    <div class="base-url-badge" onclick="openUrlModal()" id="urlDisplay">http://localhost:5000</div>
+  </div>
+  <div class="header-status">
+    <div class="pulse-dot"></div>
+    SYSTEM ONLINE
+  </div>
+</header>
+
+<div class="main">
+<!-- Sidebar -->
+<nav id="nav">
+  <div class="nav-section-label">Overview</div>
+  <div class="nav-item active" onclick="show('dashboard')" data-sec="dashboard">
+    <span class="icon">◈</span><span>Dashboard</span>
+  </div>
+
+  <div class="nav-section-label">Inventory</div>
+  <div class="nav-item" onclick="show('inv-view')" data-sec="inv-view">
+    <span class="icon">▦</span><span>View Inventory</span>
+  </div>
+  <div class="nav-item" onclick="show('inv-add')" data-sec="inv-add">
+    <span class="icon">⊕</span><span>Add Item</span>
+  </div>
+  <div class="nav-item" onclick="show('inv-edit')" data-sec="inv-edit">
+    <span class="icon">✎</span><span>Edit Item</span>
+  </div>
+  <div class="nav-item" onclick="show('inv-del')" data-sec="inv-del">
+    <span class="icon">⊖</span><span>Delete Item</span>
+  </div>
+
+  <div class="nav-section-label">Orders</div>
+  <div class="nav-item" onclick="show('ord-place')" data-sec="ord-place">
+    <span class="icon">⚡</span><span>Place Order</span>
+  </div>
+  <div class="nav-item" onclick="show('ord-view')" data-sec="ord-view">
+    <span class="icon">≡</span><span>Order History</span>
+  </div>
+  <div class="nav-item" onclick="show('ord-edit')" data-sec="ord-edit">
+    <span class="icon">↺</span><span>Update Order</span>
+  </div>
+  <div class="nav-item" onclick="show('ord-del')" data-sec="ord-del">
+    <span class="icon">✕</span><span>Delete Order</span>
+  </div>
+
+  <div class="nav-section-label">Payment</div>
+  <div class="nav-item" onclick="show('pay')" data-sec="pay">
+    <span class="icon">◎</span><span>Process Payment</span>
+  </div>
+</nav>
+
+<!-- Content -->
+<div class="content">
+
+  <!-- DASHBOARD -->
+  <div class="section active" id="s-dashboard">
+    <div class="section-header">
+      <div class="section-title"><span>◈</span> Dashboard</div>
+      <div class="section-badge">OVERVIEW</div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card c1"><div class="stat-num" id="stat-items">—</div><div class="stat-lbl">Total Items</div></div>
+      <div class="stat-card c2"><div class="stat-num" id="stat-orders">—</div><div class="stat-lbl">Total Orders</div></div>
+      <div class="stat-card c3"><div class="stat-num" id="stat-stock">—</div><div class="stat-lbl">Total Stock</div></div>
+      <div class="stat-card c4"><div class="stat-num" id="stat-revenue">—</div><div class="stat-lbl">Revenue (₱)</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">⚡ Quick Actions</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="show('inv-view');loadInventory()">View Inventory</button>
+        <button class="btn btn-success" onclick="show('ord-place')">Place Order</button>
+        <button class="btn btn-gold" onclick="show('ord-view');loadOrders()">Order History</button>
+        <button class="btn btn-primary" onclick="loadDashboard()">↻ Refresh Stats</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">▦ Inventory Snapshot</div>
+      <div class="table-wrap"><table id="dash-table">
+        <thead><tr><th>Code</th><th>Product</th><th>Category</th><th>Stock</th><th>Price (₱)</th></tr></thead>
+        <tbody><tr><td colspan="5" style="text-align:center;color:var(--text-dim)">Loading…</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- VIEW INVENTORY -->
+  <div class="section" id="s-inv-view">
+    <div class="section-header">
+      <div class="section-title"><span>▦</span> Inventory</div>
+      <div class="section-badge">READ</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">All Products</div>
+      <div style="margin-bottom:14px">
+        <button class="btn btn-primary" onclick="loadInventory()">↻ Refresh</button>
+      </div>
+      <div class="table-wrap"><table id="inv-table">
+        <thead><tr><th>Code</th><th>Product</th><th>Category</th><th>Stock</th><th>Price (₱)</th></tr></thead>
+        <tbody><tr><td colspan="5" style="text-align:center;color:var(--text-dim)">Click Refresh to load</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ADD ITEM -->
+  <div class="section" id="s-inv-add">
+    <div class="section-header">
+      <div class="section-title"><span>⊕</span> Add Item</div>
+      <div class="section-badge">CREATE</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">New Inventory Item</div>
+      <div class="form-grid cols-3">
+        <div class="form-group"><label>Product Code</label><input id="add-code" placeholder="e.g. LAP-011" /></div>
+        <div class="form-group full"><label>Product Name</label><input id="add-name" placeholder="e.g. ASUS ROG Zephyrus G14" /></div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="add-cat">
+            <option value="LAPTOP">LAPTOP</option>
+            <option value="COOLING">COOLING</option>
+            <option value="DOCK">DOCK</option>
+            <option value="BAG">BAG</option>
+            <option value="MOUSE">MOUSE</option>
+            <option value="KEYBOARD">KEYBOARD</option>
+            <option value="MONITOR">MONITOR</option>
+            <option value="SCREEN">SCREEN</option>
+            <option value="CHARGER">CHARGER</option>
+            <option value="MEMORY">MEMORY</option>
+            <option value="STORAGE">STORAGE</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Stock (units)</label><input id="add-stock" type="number" placeholder="100" /></div>
+        <div class="form-group"><label>Price (₱)</label><input id="add-price" type="number" step="0.01" placeholder="999.99" /></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-success" onclick="addItem()">⊕ Add Item</button>
+        <button class="btn btn-primary" onclick="clearForm('add')">Clear</button>
+      </div>
+      <div class="response-box" id="add-resp">// response will appear here</div>
+    </div>
+  </div>
+
+  <!-- EDIT ITEM -->
+  <div class="section" id="s-inv-edit">
+    <div class="section-header">
+      <div class="section-title"><span>✎</span> Edit Item</div>
+      <div class="section-badge">UPDATE</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Update Product Fields</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Product Code *</label><input id="edit-code" placeholder="e.g. ACC-001" /></div>
+        <div class="form-group"><label>New Name (optional)</label><input id="edit-name" placeholder="Leave blank to keep" /></div>
+        <div class="form-group"><label>New Price ₱ (optional)</label><input id="edit-price" type="number" step="0.01" placeholder="Leave blank to keep" /></div>
+        <div class="form-group"><label>New Stock (optional)</label><input id="edit-stock" type="number" placeholder="Leave blank to keep" /></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-gold" onclick="editItem()">✎ Update Item</button>
+        <button class="btn btn-primary" onclick="clearForm('edit')">Clear</button>
+      </div>
+      <div class="response-box" id="edit-resp">// response will appear here</div>
+    </div>
+  </div>
+
+  <!-- DELETE ITEM -->
+  <div class="section" id="s-inv-del">
+    <div class="section-header">
+      <div class="section-title"><span>⊖</span> Delete Item</div>
+      <div class="section-badge">DELETE</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Remove Inventory Item</div>
+      <div class="form-grid" style="max-width:400px">
+        <div class="form-group full"><label>Product Code</label><input id="del-code" placeholder="e.g. ACC-010" /></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-danger" onclick="deleteItem()">⊖ Delete Item</button>
+      </div>
+      <div class="response-box" id="del-resp">// response will appear here</div>
+    </div>
+  </div>
+
+  <!-- PLACE ORDER -->
+  <div class="section" id="s-ord-place">
+    <div class="section-header">
+      <div class="section-title"><span>⚡</span> Place Order</div>
+      <div class="section-badge">TRANSACTION</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">New Order</div>
+      <div class="form-grid" style="max-width:500px">
+        <div class="form-group"><label>Product Code</label><input id="ord-code" placeholder="e.g. LAP-001" /></div>
+        <div class="form-group"><label>Quantity</label><input id="ord-qty" type="number" min="1" placeholder="1" /></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-success" onclick="placeOrder()">⚡ Place Order</button>
+      </div>
+      <div class="response-box" id="ord-resp">// response will appear here</div>
+    </div>
+  </div>
+
+  <!-- ORDER HISTORY -->
+  <div class="section" id="s-ord-view">
+    <div class="section-header">
+      <div class="section-title"><span>≡</span> Order History</div>
+      <div class="section-badge">READ</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">All Orders</div>
+      <div style="margin-bottom:14px">
+        <button class="btn btn-primary" onclick="loadOrders()">↻ Refresh</button>
+      </div>
+      <div class="table-wrap"><table id="ord-table">
+        <thead><tr><th>TXN ID</th><th>Timestamp</th><th>Code</th><th>Product</th><th>Qty</th><th>Unit ₱</th><th>Total ₱</th><th>Status</th></tr></thead>
+        <tbody><tr><td colspan="8" style="text-align:center;color:var(--text-dim)">Click Refresh to load</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- UPDATE ORDER -->
+  <div class="section" id="s-ord-edit">
+    <div class="section-header">
+      <div class="section-title"><span>↺</span> Update Order</div>
+      <div class="section-badge">UPDATE</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Modify Existing Order</div>
+      <div class="form-grid" style="max-width:500px">
+        <div class="form-group full"><label>Transaction ID *</label><input id="upd-txn" placeholder="e.g. TXN-000123" /></div>
+        <div class="form-group">
+          <label>New Status (optional)</label>
+          <select id="upd-status">
+            <option value="">— no change —</option>
+            <option value="Completed">Completed</option>
+            <option value="Pending">Pending</option>
+            <option value="Cancelled">Cancelled</option>
+            <option value="Refunded">Refunded</option>
+          </select>
+        </div>
+        <div class="form-group"><label>New Quantity (optional)</label><input id="upd-qty" type="number" min="1" placeholder="Leave blank to keep" /></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-gold" onclick="updateOrder()">↺ Update Order</button>
+        <button class="btn btn-primary" onclick="clearForm('upd')">Clear</button>
+      </div>
+      <div class="response-box" id="upd-resp">// response will appear here</div>
+    </div>
+  </div>
+
+  <!-- DELETE ORDER -->
+  <div class="section" id="s-ord-del">
+    <div class="section-header">
+      <div class="section-title"><span>✕</span> Delete Order</div>
+      <div class="section-badge">DELETE</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Remove Order Record</div>
+      <div class="form-grid" style="max-width:400px">
+        <div class="form-group full"><label>Transaction ID</label><input id="dord-txn" placeholder="e.g. TXN-000123" /></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-danger" onclick="deleteOrder()">✕ Delete Order</button>
+      </div>
+      <div class="response-box" id="dord-resp">// response will appear here</div>
+    </div>
+  </div>
+
+  <!-- PROCESS PAYMENT -->
+  <div class="section" id="s-pay">
+    <div class="section-header">
+      <div class="section-title"><span>◎</span> Process Payment</div>
+      <div class="section-badge">PAYMENT</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Direct Payment</div>
+      <div class="form-grid cols-3" style="max-width:600px">
+        <div class="form-group"><label>Amount (₱)</label><input id="pay-amt" type="number" step="0.01" placeholder="999.99" /></div>
+        <div class="form-group"><label>Product Name</label><input id="pay-prod" placeholder="MacBook Pro 14" /></div>
+        <div class="form-group"><label>Quantity</label><input id="pay-qty" type="number" min="1" placeholder="1" /></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-success" onclick="processPayment()">◎ Process Payment</button>
+      </div>
+      <div class="response-box" id="pay-resp">// response will appear here</div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /page-wrap -->
+
+<!-- URL Modal -->
+<div class="modal-overlay" id="urlModal">
+  <div class="modal">
+    <div class="modal-title">⬡ Configure Base URL</div>
+    <label>API Base URL</label><br><br>
+    <input type="text" id="urlInput" placeholder="http://localhost:5000" />
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="saveUrl()">Save</button>
+      <button class="btn btn-danger" onclick="closeUrlModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+/* ── State ── */
+let BASE = localStorage.getItem('nexus_base') || 'http://localhost:5000';
+
+function updateBaseDisplay(){ document.getElementById('urlDisplay').textContent = BASE; }
+updateBaseDisplay();
+
+/* ── Navigation ── */
+function show(sec){
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('s-'+sec).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.sec === sec);
+  });
+  if(sec === 'dashboard') loadDashboard();
+  if(sec === 'inv-view')  loadInventory();
+  if(sec === 'ord-view')  loadOrders();
+}
+
+/* ── URL Modal ── */
+function openUrlModal(){
+  document.getElementById('urlInput').value = BASE;
+  document.getElementById('urlModal').classList.add('open');
+}
+function closeUrlModal(){ document.getElementById('urlModal').classList.remove('open'); }
+function saveUrl(){
+  BASE = document.getElementById('urlInput').value.replace(/\/+$/,'');
+  localStorage.setItem('nexus_base', BASE);
+  updateBaseDisplay(); closeUrlModal();
+  toast('Base URL updated', false);
+}
+
+/* ── Toast ── */
+function toast(msg, isErr=false){
+  const t = document.getElementById('toast');
+  t.textContent = (isErr ? '✕ ' : '✔ ') + msg;
+  t.className = 'show' + (isErr ? ' error' : '');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+/* ── XML Helpers ── */
+function buildXml(tag, fields){
+  let x = `<${tag}>`;
+  for(const [k,v] of Object.entries(fields)) if(v !== '' && v !== null) x += `<${k}>${v}</${k}>`;
+  return x + `</${tag}>`;
+}
+function parseXml(str){ return new DOMParser().parseFromString(str, 'application/xml'); }
+function xval(doc, tag){ const el = doc.querySelector(tag); return el ? el.textContent : null; }
+
+/* ── API ── */
+async function api(method, endpoint, body=null){
+  const opts = { method, headers: {'Content-Type':'application/xml'} };
+  if(body) opts.body = body;
+  const r = await fetch(BASE + endpoint, opts);
+  return r.text();
+}
+
+function setResp(id, text, type=''){
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'response-box ' + type;
+}
+function loading(id){ setResp(id, '⠋ Sending request…', 'loading'); }
+
+/* ── Dashboard ── */
+async function loadDashboard(){
+  try {
+    const invXml = await api('GET','/inventory');
+    const ordXml = await api('GET','/order_history');
+    const invDoc = parseXml(invXml);
+    const ordDoc = parseXml(ordXml);
+    const items  = invDoc.querySelectorAll('Item');
+    const orders = ordDoc.querySelectorAll('Order');
+    let totalStock = 0, revenue = 0;
+    items.forEach(i => totalStock += parseInt(i.querySelector('Stock').textContent)||0);
+    orders.forEach(o => revenue += parseFloat(o.querySelector('TotalAmount').textContent)||0);
+    document.getElementById('stat-items').textContent  = items.length;
+    document.getElementById('stat-orders').textContent = orders.length;
+    document.getElementById('stat-stock').textContent  = totalStock.toLocaleString();
+    document.getElementById('stat-revenue').textContent = revenue.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+    // Build snapshot table
+    const tbody = document.querySelector('#dash-table tbody');
+    tbody.innerHTML = '';
+    items.forEach(i => {
+      const stock = parseInt(i.querySelector('Stock').textContent)||0;
+      const stockClass = stock < 100 ? 'stock-low' : 'stock-ok';
+      tbody.innerHTML += `<tr>
+        <td><span style="color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:0.8rem">${i.querySelector('Code').textContent}</span></td>
+        <td>${i.querySelector('Name').textContent}</td>
+        <td><span class="badge badge-cat">${i.querySelector('Category').textContent}</span></td>
+        <td class="${stockClass}">${stock}</td>
+        <td>₱${parseFloat(i.querySelector('Price').textContent).toLocaleString('en-PH',{minimumFractionDigits:2})}</td>
+      </tr>`;
+    });
+  } catch(e){ toast('Failed to load dashboard: '+e.message, true); }
+}
+
+/* ── Inventory ── */
+async function loadInventory(){
+  const tbody = document.querySelector('#inv-table tbody');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center"><span class="spinner"></span>Loading…</td></tr>';
+  try {
+    const xml = await api('GET','/inventory');
+    const doc = parseXml(xml);
+    const items = doc.querySelectorAll('Item');
+    tbody.innerHTML = '';
+    if(!items.length){ tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">No items found</td></tr>'; return; }
+    items.forEach(i => {
+      const stock = parseInt(i.querySelector('Stock').textContent)||0;
+      const stockClass = stock < 100 ? 'stock-low' : 'stock-ok';
+      tbody.innerHTML += `<tr>
+        <td><span style="color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:0.8rem">${i.querySelector('Code').textContent}</span></td>
+        <td>${i.querySelector('Name').textContent}</td>
+        <td><span class="badge badge-cat">${i.querySelector('Category').textContent}</span></td>
+        <td class="${stockClass}">${stock}</td>
+        <td>₱${parseFloat(i.querySelector('Price').textContent).toLocaleString('en-PH',{minimumFractionDigits:2})}</td>
+      </tr>`;
+    });
+  } catch(e){ toast('Failed: '+e.message,true); }
+}
+
+async function addItem(){
+  const code=v('add-code'),name=v('add-name'),cat=v('add-cat'),stock=v('add-stock'),price=v('add-price');
+  if(!code||!name||!stock||!price){ toast('Fill in all fields',true); return; }
+  loading('add-resp');
+  try {
+    const xml = await api('POST','/add_item', buildXml('Item',{Code:code,Name:name,Category:cat,Stock:stock,Price:price}));
+    const doc = parseXml(xml); const status = xval(doc,'Status');
+    setResp('add-resp', formatXml(xml), status==='Success'?'success':'error');
+    toast(status==='Success'?'Item added!':'Failed: '+xval(doc,'Message'), status!=='Success');
+  } catch(e){ setResp('add-resp','Error: '+e.message,'error'); toast(e.message,true); }
+}
+
+async function editItem(){
+  const code=v('edit-code');
+  if(!code){ toast('Product code required',true); return; }
+  const fields={Code:code};
+  const n=v('edit-name'),pr=v('edit-price'),st=v('edit-stock');
+  if(n) fields.Name=n; if(pr) fields.Price=pr; if(st) fields.Stock=st;
+  loading('edit-resp');
+  try {
+    const xml = await api('POST','/edit_item', buildXml('Item',fields));
+    const doc = parseXml(xml); const status = xval(doc,'Status');
+    setResp('edit-resp', formatXml(xml), status==='Success'?'success':'error');
+    toast(status==='Success'?'Item updated!':'Failed: '+xval(doc,'Message'), status!=='Success');
+  } catch(e){ setResp('edit-resp','Error: '+e.message,'error'); toast(e.message,true); }
+}
+
+async function deleteItem(){
+  const code=v('del-code');
+  if(!code){ toast('Product code required',true); return; }
+  if(!confirm('Delete item '+code+'?')) return;
+  loading('del-resp');
+  try {
+    const xml = await api('POST','/delete_item', buildXml('DeleteItem',{Code:code}));
+    const doc = parseXml(xml); const status = xval(doc,'Status');
+    setResp('del-resp', formatXml(xml), status==='Success'?'success':'error');
+    toast(status==='Success'?'Item deleted!':'Failed: '+xval(doc,'Message'), status!=='Success');
+  } catch(e){ setResp('del-resp','Error: '+e.message,'error'); toast(e.message,true); }
+}
+
+/* ── Orders ── */
+async function loadOrders(){
+  const tbody = document.querySelector('#ord-table tbody');
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center"><span class="spinner"></span>Loading…</td></tr>';
+  try {
+    const xml = await api('GET','/order_history');
+    const doc = parseXml(xml);
+    const orders = doc.querySelectorAll('Order');
+    tbody.innerHTML = '';
+    if(!orders.length){ tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-dim)">No orders yet</td></tr>'; return; }
+    orders.forEach(o => {
+      const status = o.querySelector('Status').textContent;
+      const badgeClass = status==='Completed'?'badge-completed':'badge-cat';
+      tbody.innerHTML += `<tr>
+        <td style="font-family:'Share Tech Mono',monospace;font-size:0.75rem;color:var(--cyan)">${o.querySelector('TransactionID').textContent}</td>
+        <td style="font-size:0.8rem;color:var(--text-dim)">${o.querySelector('Timestamp').textContent}</td>
+        <td style="font-family:'Share Tech Mono',monospace;font-size:0.78rem">${o.querySelector('ProductCode').textContent}</td>
+        <td>${o.querySelector('Product').textContent}</td>
+        <td style="text-align:center">${o.querySelector('Quantity').textContent}</td>
+        <td>₱${parseFloat(o.querySelector('PricePerUnit').textContent).toLocaleString('en-PH',{minimumFractionDigits:2})}</td>
+        <td style="color:var(--gold)">₱${parseFloat(o.querySelector('TotalAmount').textContent).toLocaleString('en-PH',{minimumFractionDigits:2})}</td>
+        <td><span class="badge ${badgeClass}">${status}</span></td>
+      </tr>`;
+    });
+  } catch(e){ toast('Failed: '+e.message,true); }
+}
+
+async function placeOrder(){
+  const code=v('ord-code'),qty=v('ord-qty');
+  if(!code||!qty){ toast('Fill in all fields',true); return; }
+  loading('ord-resp');
+  try {
+    const xml = await api('POST','/place_order', buildXml('Order',{ProductCode:code,Quantity:qty}));
+    const doc = parseXml(xml); const status = xval(doc,'Status');
+    setResp('ord-resp', formatXml(xml), status==='Success'?'success':'error');
+    toast(status==='Success'?'Order placed! TXN: '+xval(doc,'TransactionID'):'Failed: '+xval(doc,'Message'), status!=='Success');
+  } catch(e){ setResp('ord-resp','Error: '+e.message,'error'); toast(e.message,true); }
+}
+
+async function updateOrder(){
+  const txn=v('upd-txn');
+  if(!txn){ toast('Transaction ID required',true); return; }
+  const fields={TransactionID:txn};
+  const st=v('upd-status'),qty=v('upd-qty');
+  if(st) fields.Status=st; if(qty) fields.Quantity=qty;
+  loading('upd-resp');
+  try {
+    const xml = await api('POST','/update_order', buildXml('UpdateOrder',fields));
+    const doc = parseXml(xml); const status = xval(doc,'Status');
+    setResp('upd-resp', formatXml(xml), status==='Success'?'success':'error');
+    toast(status==='Success'?'Order updated!':'Failed: '+xval(doc,'Message'), status!=='Success');
+  } catch(e){ setResp('upd-resp','Error: '+e.message,'error'); toast(e.message,true); }
+}
+
+async function deleteOrder(){
+  const txn=v('dord-txn');
+  if(!txn){ toast('Transaction ID required',true); return; }
+  if(!confirm('Delete order '+txn+'?')) return;
+  loading('dord-resp');
+  try {
+    const xml = await api('POST','/delete_order', buildXml('DeleteOrder',{TransactionID:txn}));
+    const doc = parseXml(xml); const status = xval(doc,'Status');
+    setResp('dord-resp', formatXml(xml), status==='Success'?'success':'error');
+    toast(status==='Success'?'Order deleted!':'Failed: '+xval(doc,'Message'), status!=='Success');
+  } catch(e){ setResp('dord-resp','Error: '+e.message,'error'); toast(e.message,true); }
+}
+
+async function processPayment(){
+  const amt=v('pay-amt'),prod=v('pay-prod'),qty=v('pay-qty');
+  if(!amt||!prod||!qty){ toast('Fill in all fields',true); return; }
+  loading('pay-resp');
+  try {
+    const xml = await api('POST','/process_payment', buildXml('Payment',{Amount:amt,Product:prod,Quantity:qty}));
+    const doc = parseXml(xml); const status = xval(doc,'Status');
+    setResp('pay-resp', formatXml(xml), status==='Success'?'success':'error');
+    toast(status==='Success'?'Payment processed! TXN: '+xval(doc,'TransactionID'):'Failed: '+xval(doc,'Message'), status!=='Success');
+  } catch(e){ setResp('pay-resp','Error: '+e.message,'error'); toast(e.message,true); }
+}
+
+/* ── Utils ── */
+function v(id){ return document.getElementById(id).value.trim(); }
+
+function clearForm(prefix){
+  const ids = {
+    add: ['add-code','add-name','add-stock','add-price'],
+    edit: ['edit-code','edit-name','edit-price','edit-stock'],
+    upd: ['upd-txn','upd-qty']
+  };
+  (ids[prefix]||[]).forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  const selects = {add:['add-cat'], upd:['upd-status']};
+  (selects[prefix]||[]).forEach(id => { const el=document.getElementById(id); if(el) el.selectedIndex=0; });
+}
+
+function formatXml(str){
+  // Pretty-print XML for response boxes
+  try {
+    let indent = 0;
+    return str.replace(/>(\s*)</g,'>\n<').split('\n').map(line => {
+      line = line.trim();
+      if(!line) return '';
+      if(line.startsWith('</')) indent = Math.max(0, indent-1);
+      const result = '  '.repeat(indent) + line;
+      if(line.startsWith('<') && !line.startsWith('</') && !line.startsWith('<?') && !line.endsWith('/>') && !line.includes('</')) indent++;
+      return result;
+    }).filter(Boolean).join('\n');
+  } catch(e){ return str; }
+}
+
+/* ── Init ── */
+loadDashboard();
+</script>
+</body>
+</html>
