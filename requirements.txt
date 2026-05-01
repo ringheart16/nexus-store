@@ -1,6 +1,7 @@
-flask
+Flask
 flask-cors
-sqlalchemy
-mysql-connector-python
+SQLAlchemy
+pymysql
 requests
 gunicorn
+cryptography

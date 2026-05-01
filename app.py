@@ -1,4 +1,4 @@
-from flask import Flask, request, Response
+from flask import Flask, request, Response, send_from_directory
 from flask_cors import CORS
 import xml.etree.ElementTree as ET
 import requests
@@ -8,395 +8,534 @@ from sqlalchemy import create_engine, Column, String, Integer, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static")
 CORS(app)
 
-# ── Database Setup ──────────────────────────────────────────────────────────
-DB_HOST     = os.environ.get("DB_HOST")
-DB_USER     = os.environ.get("DB_USER")
-DB_PASSWORD = os.environ.get("DB_PASSWORD")
-DB_NAME     = os.environ.get("DB_NAME")
+# ── Database Setup for XAMPP MySQL ───────────────────────────────────────────
+# XAMPP default:
+# DB_HOST = localhost
+# DB_PORT = 3306
+# DB_USER = root
+# DB_PASSWORD = empty
+# DB_NAME = orm_inventory_db
 
-DATABASE_URL = f"mysql+mysqlconnector://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:4000/{DB_NAME}"
 
-engine = create_engine(DATABASE_URL)
-Base   = declarative_base()
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-from flask import send_from_directory
-@app.route('/')
+if DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
+else:
+    # Local fallback for XAMPP
+    DB_HOST = os.environ.get("DB_HOST", "localhost")
+    DB_PORT = os.environ.get("DB_PORT", "3306")
+    DB_USER = os.environ.get("DB_USER", "root")
+    DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+    DB_NAME = os.environ.get("DB_NAME", "orm_inventory_db")
+
+    DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=280
+)
+
+Base = declarative_base()
+Session = sessionmaker(bind=engine)
+
+# ── Frontend Route ───────────────────────────────────────────────────────────
+@app.route("/")
 def index():
-    return send_from_directory('static', 'index.html')
+    return send_from_directory("static", "index.html")
+
 
 # ── Models ───────────────────────────────────────────────────────────────────
-
 class InventoryItem(Base):
-    __tablename__ = 'inventory'
-    code     = Column(String(20),  primary_key=True)
-    name     = Column(String(100))
-    category = Column(String(50))
-    stock    = Column(Integer)
-    price    = Column(Float)
+    __tablename__ = "inventory"
+
+    code = Column(String(20), primary_key=True)
+    name = Column(String(100), nullable=False)
+    category = Column(String(50), nullable=False)
+    stock = Column(Integer, nullable=False, default=0)
+    price = Column(Float, nullable=False, default=0)
 
 
 class Order(Base):
-    __tablename__   = 'orders'
-    transaction_id  = Column(String(20),  primary_key=True)
-    timestamp       = Column(String(30))
-    product_code    = Column(String(20))
-    product         = Column(String(100))
-    category        = Column(String(50))
-    quantity        = Column(Integer)
-    price_per_unit  = Column(Float)
-    total_amount    = Column(Float)
-    status          = Column(String(20))
+    __tablename__ = "orders"
+
+    transaction_id = Column(String(20), primary_key=True)
+    timestamp = Column(String(30))
+    product_code = Column(String(20))
+    product = Column(String(100))
+    category = Column(String(50))
+    quantity = Column(Integer)
+    price_per_unit = Column(Float)
+    total_amount = Column(Float)
+    status = Column(String(20))
 
 
+# This creates tables automatically if they do not exist yet.
+# Still recommended to create database first in phpMyAdmin.
 Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
 
-# ── Seed Data (laptop products) ──────────────────────────────────────────────
-SEED_DATA = [
-    InventoryItem(code="LAP-001", name="Dell XPS 15 Laptop",          category="LAPTOP",    stock=80,  price=1499.99),
-    InventoryItem(code="LAP-002", name="Apple MacBook Pro 14-inch",    category="LAPTOP",    stock=60,  price=1999.00),
-    InventoryItem(code="LAP-003", name="Lenovo ThinkPad X1 Carbon",    category="LAPTOP",    stock=75,  price=1349.00),
-    InventoryItem(code="LAP-004", name="HP Spectre x360 13",           category="LAPTOP",    stock=50,  price=1249.99),
-    InventoryItem(code="ACC-001", name="Laptop Cooling Pad",           category="COOLING",   stock=200, price=29.99),
-    InventoryItem(code="ACC-002", name="USB-C Docking Station",        category="DOCK",      stock=150, price=89.99),
-    InventoryItem(code="ACC-003", name="Laptop Backpack 15.6-inch",    category="BAG",       stock=300, price=45.00),
-    InventoryItem(code="ACC-004", name="Wireless Bluetooth Mouse",     category="MOUSE",     stock=400, price=34.50),
-    InventoryItem(code="ACC-005", name="Mechanical Keyboard TKL",      category="KEYBOARD",  stock=180, price=79.99),
-    InventoryItem(code="ACC-006", name="27-inch 4K Monitor",           category="MONITOR",   stock=90,  price=399.00),
-    InventoryItem(code="ACC-007", name="Laptop Privacy Screen Filter", category="SCREEN",    stock=250, price=22.00),
-    InventoryItem(code="ACC-008", name="65W GaN USB-C Charger",        category="CHARGER",   stock=350, price=49.99),
-    InventoryItem(code="ACC-009", name="16GB DDR5 RAM Module",         category="MEMORY",    stock=120, price=64.99),
-    InventoryItem(code="ACC-010", name="1TB NVMe SSD",                 category="STORAGE",   stock=140, price=109.99),
-]
 
-with Session() as s:
-    if s.query(InventoryItem).count() == 0:
-        s.add_all(SEED_DATA)
-        s.commit()
+# ── Helpers ──────────────────────────────────────────────────────────────────
+def xml_response(element):
+    return Response(
+        ET.tostring(element, encoding="unicode"),
+        mimetype="application/xml"
+    )
 
-# ── Helper ───────────────────────────────────────────────────────────────────
+
+def error_response(root_name, message):
+    root = ET.Element(root_name)
+    ET.SubElement(root, "Status").text = "Failed"
+    ET.SubElement(root, "Message").text = message
+    return xml_response(root)
+
+
+def get_text(root, tag, required=True, default=None):
+    element = root.find(tag)
+
+    if element is None or element.text is None or element.text.strip() == "":
+        if required:
+            raise ValueError(f"{tag} is required")
+        return default
+
+    return element.text.strip()
+
 
 def post_with_retry(url, data, retries=3, timeout=15):
     for attempt in range(retries):
         try:
-            resp = requests.post(
-                url, data=data,
-                headers={'Content-Type': 'application/xml'},
+            response = requests.post(
+                url,
+                data=data,
+                headers={"Content-Type": "application/xml"},
                 timeout=timeout
             )
-            return resp
+            return response
         except requests.exceptions.Timeout:
             if attempt < retries - 1:
                 time.sleep(3)
             else:
                 raise
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# INVENTORY SERVICE ROUTES
-# ═══════════════════════════════════════════════════════════════════════════════
 
-@app.route('/inventory', methods=['GET'])
+# ══════════════════════════════════════════════════════════════════════════════
+# INVENTORY SERVICE ROUTES
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/inventory", methods=["GET"])
 def get_inventory():
     """Return all inventory items as XML."""
-    with Session() as s:
-        items = s.query(InventoryItem).all()
-        root  = ET.Element('Inventory')
+    with Session() as session:
+        items = session.query(InventoryItem).all()
+
+        root = ET.Element("Inventory")
+
         for item in items:
-            el = ET.SubElement(root, 'Item')
-            ET.SubElement(el, 'Code').text     = item.code
-            ET.SubElement(el, 'Name').text     = item.name
-            ET.SubElement(el, 'Category').text = item.category
-            ET.SubElement(el, 'Stock').text    = str(item.stock)
-            ET.SubElement(el, 'Price').text    = str(item.price)
-        return Response(ET.tostring(root, encoding='unicode'), mimetype='application/xml')
+            item_el = ET.SubElement(root, "Item")
+            ET.SubElement(item_el, "Code").text = item.code
+            ET.SubElement(item_el, "Name").text = item.name
+            ET.SubElement(item_el, "Category").text = item.category
+            ET.SubElement(item_el, "Stock").text = str(item.stock)
+            ET.SubElement(item_el, "Price").text = f"{item.price:.2f}"
+
+        return xml_response(root)
 
 
-@app.route('/update_inventory', methods=['POST'])
-def update_inventory():
-    """Deduct stock based on order quantity (called internally by place_order)."""
-    root     = ET.fromstring(request.data)
-    code     = root.find('ProductCode').text
-    quantity = int(root.find('Quantity').text)
-
-    response_el = ET.Element('InventoryResponse')
-    with Session() as s:
-        item = s.query(InventoryItem).filter_by(code=code).first()
-        if item:
-            if item.stock >= quantity:
-                item.stock -= quantity
-                s.commit()
-                ET.SubElement(response_el, 'Status').text        = 'Success'
-                ET.SubElement(response_el, 'RemainingStock').text = str(item.stock)
-                ET.SubElement(response_el, 'Product').text       = item.name
-                ET.SubElement(response_el, 'Category').text      = item.category
-                ET.SubElement(response_el, 'Price').text         = str(item.price)
-            else:
-                ET.SubElement(response_el, 'Status').text  = 'Failed'
-                ET.SubElement(response_el, 'Message').text = f"Insufficient stock. Available: {item.stock} units"
-        else:
-            ET.SubElement(response_el, 'Status').text  = 'Failed'
-            ET.SubElement(response_el, 'Message').text = 'Product code not found in inventory'
-
-    return Response(ET.tostring(response_el, encoding='unicode'), mimetype='application/xml')
-
-
-@app.route('/add_item', methods=['POST'])
+@app.route("/add_item", methods=["POST"])
 def add_item():
     """Add a new inventory item."""
-    root     = ET.fromstring(request.data)
-    code     = root.find('Code').text
-    name     = root.find('Name').text
-    category = root.find('Category').text
-    stock    = int(root.find('Stock').text)
-    price    = float(root.find('Price').text)
+    try:
+        root = ET.fromstring(request.data)
 
-    response_el = ET.Element('InventoryResponse')
-    with Session() as s:
-        existing = s.query(InventoryItem).filter_by(code=code).first()
-        if existing:
-            ET.SubElement(response_el, 'Status').text  = 'Failed'
-            ET.SubElement(response_el, 'Message').text = 'Product code already exists'
-        else:
-            s.add(InventoryItem(code=code, name=name, category=category, stock=stock, price=price))
-            s.commit()
-            ET.SubElement(response_el, 'Status').text  = 'Success'
-            ET.SubElement(response_el, 'Message').text = f"Item '{name}' added successfully"
+        code = get_text(root, "Code")
+        name = get_text(root, "Name")
+        category = get_text(root, "Category")
+        stock = int(get_text(root, "Stock"))
+        price = float(get_text(root, "Price"))
 
-    return Response(ET.tostring(response_el, encoding='unicode'), mimetype='application/xml')
+        response_el = ET.Element("InventoryResponse")
+
+        with Session() as session:
+            existing_item = session.query(InventoryItem).filter_by(code=code).first()
+
+            if existing_item:
+                ET.SubElement(response_el, "Status").text = "Failed"
+                ET.SubElement(response_el, "Message").text = "Product code already exists"
+            else:
+                new_item = InventoryItem(
+                    code=code,
+                    name=name,
+                    category=category,
+                    stock=stock,
+                    price=price
+                )
+
+                session.add(new_item)
+                session.commit()
+
+                ET.SubElement(response_el, "Status").text = "Success"
+                ET.SubElement(response_el, "Message").text = f"Item '{name}' added successfully"
+
+        return xml_response(response_el)
+
+    except Exception as e:
+        return error_response("InventoryResponse", str(e))
 
 
-@app.route('/edit_item', methods=['POST'])
+@app.route("/edit_item", methods=["POST"])
 def edit_item():
-    """Update an existing inventory item's name, price, or stock."""
-    root = ET.fromstring(request.data)
-    code = root.find('Code').text
+    """Update an existing inventory item's name, category, price, or stock."""
+    try:
+        root = ET.fromstring(request.data)
+        code = get_text(root, "Code")
 
-    response_el = ET.Element('InventoryResponse')
-    with Session() as s:
-        item = s.query(InventoryItem).filter_by(code=code).first()
-        if not item:
-            ET.SubElement(response_el, 'Status').text  = 'Failed'
-            ET.SubElement(response_el, 'Message').text = 'Product code not found'
-        else:
-            if root.find('Name')  is not None: item.name  = root.find('Name').text
-            if root.find('Price') is not None: item.price = float(root.find('Price').text)
-            if root.find('Stock') is not None: item.stock = int(root.find('Stock').text)
-            s.commit()
-            ET.SubElement(response_el, 'Status').text   = 'Success'
-            ET.SubElement(response_el, 'Message').text  = f"Item '{item.name}' updated successfully"
-            ET.SubElement(response_el, 'Code').text     = item.code
-            ET.SubElement(response_el, 'Name').text     = item.name
-            ET.SubElement(response_el, 'Price').text    = str(item.price)
-            ET.SubElement(response_el, 'Stock').text    = str(item.stock)
-            ET.SubElement(response_el, 'Category').text = item.category
+        response_el = ET.Element("InventoryResponse")
 
-    return Response(ET.tostring(response_el, encoding='unicode'), mimetype='application/xml')
+        with Session() as session:
+            item = session.query(InventoryItem).filter_by(code=code).first()
+
+            if not item:
+                ET.SubElement(response_el, "Status").text = "Failed"
+                ET.SubElement(response_el, "Message").text = "Product code not found"
+            else:
+                name = get_text(root, "Name", required=False)
+                category = get_text(root, "Category", required=False)
+                stock = get_text(root, "Stock", required=False)
+                price = get_text(root, "Price", required=False)
+
+                if name is not None:
+                    item.name = name
+
+                if category is not None:
+                    item.category = category
+
+                if stock is not None:
+                    item.stock = int(stock)
+
+                if price is not None:
+                    item.price = float(price)
+
+                session.commit()
+
+                ET.SubElement(response_el, "Status").text = "Success"
+                ET.SubElement(response_el, "Message").text = f"Item '{item.name}' updated successfully"
+                ET.SubElement(response_el, "Code").text = item.code
+                ET.SubElement(response_el, "Name").text = item.name
+                ET.SubElement(response_el, "Category").text = item.category
+                ET.SubElement(response_el, "Stock").text = str(item.stock)
+                ET.SubElement(response_el, "Price").text = f"{item.price:.2f}"
+
+        return xml_response(response_el)
+
+    except Exception as e:
+        return error_response("InventoryResponse", str(e))
 
 
-@app.route('/delete_item', methods=['POST'])
+@app.route("/delete_item", methods=["POST"])
 def delete_item():
-    """Delete an inventory item by code."""
-    root = ET.fromstring(request.data)
-    code = root.find('Code').text
+    """Delete an inventory item by product code."""
+    try:
+        root = ET.fromstring(request.data)
+        code = get_text(root, "Code")
 
-    response_el = ET.Element('InventoryResponse')
-    with Session() as s:
-        item = s.query(InventoryItem).filter_by(code=code).first()
-        if not item:
-            ET.SubElement(response_el, 'Status').text  = 'Failed'
-            ET.SubElement(response_el, 'Message').text = 'Product code not found'
-        else:
-            name = item.name
-            s.delete(item)
-            s.commit()
-            ET.SubElement(response_el, 'Status').text  = 'Success'
-            ET.SubElement(response_el, 'Message').text = f"Item '{name}' deleted successfully"
+        response_el = ET.Element("InventoryResponse")
 
-    return Response(ET.tostring(response_el, encoding='unicode'), mimetype='application/xml')
+        with Session() as session:
+            item = session.query(InventoryItem).filter_by(code=code).first()
+
+            if not item:
+                ET.SubElement(response_el, "Status").text = "Failed"
+                ET.SubElement(response_el, "Message").text = "Product code not found"
+            else:
+                item_name = item.name
+                session.delete(item)
+                session.commit()
+
+                ET.SubElement(response_el, "Status").text = "Success"
+                ET.SubElement(response_el, "Message").text = f"Item '{item_name}' deleted successfully"
+
+        return xml_response(response_el)
+
+    except Exception as e:
+        return error_response("InventoryResponse", str(e))
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+@app.route("/update_inventory", methods=["POST"])
+def update_inventory():
+    """Deduct stock based on order quantity."""
+    try:
+        root = ET.fromstring(request.data)
+
+        code = get_text(root, "ProductCode")
+        quantity = int(get_text(root, "Quantity"))
+
+        response_el = ET.Element("InventoryResponse")
+
+        with Session() as session:
+            item = session.query(InventoryItem).filter_by(code=code).first()
+
+            if not item:
+                ET.SubElement(response_el, "Status").text = "Failed"
+                ET.SubElement(response_el, "Message").text = "Product code not found in inventory"
+            elif quantity <= 0:
+                ET.SubElement(response_el, "Status").text = "Failed"
+                ET.SubElement(response_el, "Message").text = "Quantity must be greater than zero"
+            elif item.stock < quantity:
+                ET.SubElement(response_el, "Status").text = "Failed"
+                ET.SubElement(response_el, "Message").text = f"Insufficient stock. Available: {item.stock} units"
+            else:
+                item.stock -= quantity
+                session.commit()
+
+                ET.SubElement(response_el, "Status").text = "Success"
+                ET.SubElement(response_el, "RemainingStock").text = str(item.stock)
+                ET.SubElement(response_el, "Product").text = item.name
+                ET.SubElement(response_el, "Category").text = item.category
+                ET.SubElement(response_el, "Price").text = f"{item.price:.2f}"
+
+        return xml_response(response_el)
+
+    except Exception as e:
+        return error_response("InventoryResponse", str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PAYMENT SERVICE ROUTES
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 
-@app.route('/process_payment', methods=['POST'])
+@app.route("/process_payment", methods=["POST"])
 def process_payment():
     """Process a payment and return a transaction ID."""
-    root     = ET.fromstring(request.data)
-    amount   = float(root.find('Amount').text)
-    product  = root.find('Product').text
-    quantity = int(root.find('Quantity').text)
+    try:
+        root = ET.fromstring(request.data)
 
-    response_el = ET.Element('PaymentResponse')
+        amount = float(get_text(root, "Amount"))
+        product = get_text(root, "Product")
+        quantity = int(get_text(root, "Quantity"))
 
-    if amount > 0 and quantity > 0:
-        txn_id = f"TXN-{abs(hash(f'{product}{amount}')) % 1000000:06d}"
-        ET.SubElement(response_el, 'Status').text        = 'Success'
-        ET.SubElement(response_el, 'TransactionID').text = txn_id
-        ET.SubElement(response_el, 'Amount').text        = f"{amount:.2f}"
-        ET.SubElement(response_el, 'Product').text       = product
-        ET.SubElement(response_el, 'Quantity').text      = str(quantity)
-        ET.SubElement(response_el, 'Message').text       = 'Payment processed successfully'
-    else:
-        ET.SubElement(response_el, 'Status').text  = 'Failed'
-        ET.SubElement(response_el, 'Message').text = 'Invalid payment amount or quantity'
+        response_el = ET.Element("PaymentResponse")
 
-    return Response(ET.tostring(response_el, encoding='unicode'), mimetype='application/xml')
+        if amount > 0 and quantity > 0:
+            unique_value = f"{product}{amount}{quantity}{datetime.now().timestamp()}"
+            transaction_id = f"TXN-{abs(hash(unique_value)) % 1000000:06d}"
+
+            ET.SubElement(response_el, "Status").text = "Success"
+            ET.SubElement(response_el, "TransactionID").text = transaction_id
+            ET.SubElement(response_el, "Amount").text = f"{amount:.2f}"
+            ET.SubElement(response_el, "Product").text = product
+            ET.SubElement(response_el, "Quantity").text = str(quantity)
+            ET.SubElement(response_el, "Message").text = "Payment processed successfully"
+        else:
+            ET.SubElement(response_el, "Status").text = "Failed"
+            ET.SubElement(response_el, "Message").text = "Invalid payment amount or quantity"
+
+        return xml_response(response_el)
+
+    except Exception as e:
+        return error_response("PaymentResponse", str(e))
 
 
-@app.route('/ping', methods=['GET'])
+@app.route("/ping", methods=["GET"])
 def ping():
-    return Response('<status>ok</status>', mimetype='application/xml')
+    root = ET.Element("status")
+    root.text = "ok"
+    return xml_response(root)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # ORDER SERVICE ROUTES
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 
-# Internal base URL — routes to the same Flask app
-_BASE_URL = os.environ.get("BASE_URL", "http://localhost:5000")
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:5000")
 
-@app.route('/place_order', methods=['POST'])
+
+@app.route("/place_order", methods=["POST"])
 def place_order():
     """
     Full order pipeline:
-      1. Reserve inventory  → POST /update_inventory (internal)
-      2. Process payment    → POST /process_payment  (internal)
-      3. Persist order to DB
+    1. Deduct stock using /update_inventory
+    2. Process payment using /process_payment
+    3. Save order using ORM
     """
-    root         = ET.fromstring(request.data)
-    product_code = root.find('ProductCode').text
-    quantity     = int(root.find('Quantity').text)
+    try:
+        root = ET.fromstring(request.data)
 
-    # 1. Reserve inventory
-    inv_resp = post_with_retry(f"{_BASE_URL}/update_inventory", data=request.data)
-    inv_root = ET.fromstring(inv_resp.content)
+        product_code = get_text(root, "ProductCode")
+        quantity = int(get_text(root, "Quantity"))
 
-    if inv_root.find('Status').text != 'Success':
-        return Response(inv_resp.content, mimetype='application/xml')
+        if quantity <= 0:
+            return error_response("OrderResponse", "Quantity must be greater than zero")
 
-    product        = inv_root.find('Product').text
-    category       = inv_root.find('Category').text
-    price_per_unit = float(inv_root.find('Price').text)
-    total_amount   = quantity * price_per_unit
+        # 1. Deduct inventory
+        inventory_response = post_with_retry(
+            f"{BASE_URL}/update_inventory",
+            data=request.data
+        )
 
-    # 2. Process payment
-    pay_xml = ET.Element('Payment')
-    ET.SubElement(pay_xml, 'Amount').text   = str(total_amount)
-    ET.SubElement(pay_xml, 'Product').text  = product
-    ET.SubElement(pay_xml, 'Quantity').text = str(quantity)
+        inventory_root = ET.fromstring(inventory_response.content)
 
-    pay_resp = post_with_retry(f"{_BASE_URL}/process_payment", data=ET.tostring(pay_xml))
-    pay_root = ET.fromstring(pay_resp.content)
+        if inventory_root.find("Status").text != "Success":
+            return Response(inventory_response.content, mimetype="application/xml")
 
-    if pay_root.find('Status').text != 'Success':
-        return Response(pay_resp.content, mimetype='application/xml')
+        product = inventory_root.find("Product").text
+        category = inventory_root.find("Category").text
+        price_per_unit = float(inventory_root.find("Price").text)
+        total_amount = quantity * price_per_unit
 
-    transaction_id = pay_root.find('TransactionID').text
+        # 2. Process payment
+        payment_xml = ET.Element("Payment")
+        ET.SubElement(payment_xml, "Amount").text = str(total_amount)
+        ET.SubElement(payment_xml, "Product").text = product
+        ET.SubElement(payment_xml, "Quantity").text = str(quantity)
 
-    # 3. Save order to DB
-    with Session() as s:
-        s.add(Order(
-            transaction_id = transaction_id,
-            timestamp      = datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            product_code   = product_code,
-            product        = product,
-            category       = category,
-            quantity       = quantity,
-            price_per_unit = price_per_unit,
-            total_amount   = total_amount,
-            status         = 'Completed'
-        ))
-        s.commit()
+        payment_response = post_with_retry(
+            f"{BASE_URL}/process_payment",
+            data=ET.tostring(payment_xml)
+        )
 
-    # 4. Build success response
-    final = ET.Element('OrderResponse')
-    ET.SubElement(final, 'Status').text         = 'Success'
-    ET.SubElement(final, 'TransactionID').text  = transaction_id
-    ET.SubElement(final, 'Product').text        = product
-    ET.SubElement(final, 'Quantity').text       = str(quantity)
-    ET.SubElement(final, 'PricePerUnit').text   = f"{price_per_unit:.2f}"
-    ET.SubElement(final, 'TotalAmount').text    = f"{total_amount:.2f}"
-    ET.SubElement(final, 'RemainingStock').text = inv_root.find('RemainingStock').text
-    ET.SubElement(final, 'Message').text        = 'Order placed and payment processed successfully'
+        payment_root = ET.fromstring(payment_response.content)
 
-    return Response(ET.tostring(final, encoding='unicode'), mimetype='application/xml')
+        if payment_root.find("Status").text != "Success":
+            return Response(payment_response.content, mimetype="application/xml")
+
+        transaction_id = payment_root.find("TransactionID").text
+
+        # 3. Save order to database using ORM
+        with Session() as session:
+            new_order = Order(
+                transaction_id=transaction_id,
+                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                product_code=product_code,
+                product=product,
+                category=category,
+                quantity=quantity,
+                price_per_unit=price_per_unit,
+                total_amount=total_amount,
+                status="Completed"
+            )
+
+            session.add(new_order)
+            session.commit()
+
+        # 4. Final response
+        final_response = ET.Element("OrderResponse")
+        ET.SubElement(final_response, "Status").text = "Success"
+        ET.SubElement(final_response, "TransactionID").text = transaction_id
+        ET.SubElement(final_response, "ProductCode").text = product_code
+        ET.SubElement(final_response, "Product").text = product
+        ET.SubElement(final_response, "Category").text = category
+        ET.SubElement(final_response, "Quantity").text = str(quantity)
+        ET.SubElement(final_response, "PricePerUnit").text = f"{price_per_unit:.2f}"
+        ET.SubElement(final_response, "TotalAmount").text = f"{total_amount:.2f}"
+        ET.SubElement(final_response, "RemainingStock").text = inventory_root.find("RemainingStock").text
+        ET.SubElement(final_response, "Message").text = "Order placed and payment processed successfully"
+
+        return xml_response(final_response)
+
+    except Exception as e:
+        return error_response("OrderResponse", str(e))
 
 
-@app.route('/order_history', methods=['GET'])
+@app.route("/order_history", methods=["GET"])
 def order_history():
     """Return all orders as XML."""
-    with Session() as s:
-        orders = s.query(Order).all()
-        root   = ET.Element('Orders')
-        for o in orders:
-            el = ET.SubElement(root, 'Order')
-            ET.SubElement(el, 'TransactionID').text = o.transaction_id
-            ET.SubElement(el, 'Timestamp').text     = o.timestamp
-            ET.SubElement(el, 'ProductCode').text   = o.product_code
-            ET.SubElement(el, 'Product').text       = o.product
-            ET.SubElement(el, 'Category').text      = o.category
-            ET.SubElement(el, 'Quantity').text      = str(o.quantity)
-            ET.SubElement(el, 'PricePerUnit').text  = f"{o.price_per_unit:.2f}"
-            ET.SubElement(el, 'TotalAmount').text   = f"{o.total_amount:.2f}"
-            ET.SubElement(el, 'Status').text        = o.status
-        return Response(ET.tostring(root, encoding='unicode'), mimetype='application/xml')
+    with Session() as session:
+        orders = session.query(Order).all()
+
+        root = ET.Element("Orders")
+
+        for order in orders:
+            order_el = ET.SubElement(root, "Order")
+            ET.SubElement(order_el, "TransactionID").text = order.transaction_id
+            ET.SubElement(order_el, "Timestamp").text = order.timestamp
+            ET.SubElement(order_el, "ProductCode").text = order.product_code
+            ET.SubElement(order_el, "Product").text = order.product
+            ET.SubElement(order_el, "Category").text = order.category
+            ET.SubElement(order_el, "Quantity").text = str(order.quantity)
+            ET.SubElement(order_el, "PricePerUnit").text = f"{order.price_per_unit:.2f}"
+            ET.SubElement(order_el, "TotalAmount").text = f"{order.total_amount:.2f}"
+            ET.SubElement(order_el, "Status").text = order.status
+
+        return xml_response(root)
 
 
-@app.route('/update_order', methods=['POST'])
+@app.route("/update_order", methods=["POST"])
 def update_order():
     """Update an order's status or quantity."""
-    root   = ET.fromstring(request.data)
-    txn_id = root.find('TransactionID').text
+    try:
+        root = ET.fromstring(request.data)
 
-    response_el = ET.Element('OrderResponse')
-    with Session() as s:
-        order = s.query(Order).filter_by(transaction_id=txn_id).first()
-        if not order:
-            ET.SubElement(response_el, 'Status').text  = 'Failed'
-            ET.SubElement(response_el, 'Message').text = 'Transaction not found'
-        else:
-            if root.find('Status')   is not None: order.status = root.find('Status').text
-            if root.find('Quantity') is not None:
-                order.quantity     = int(root.find('Quantity').text)
-                order.total_amount = order.quantity * order.price_per_unit
-            s.commit()
-            ET.SubElement(response_el, 'Status').text        = 'Success'
-            ET.SubElement(response_el, 'Message').text       = 'Order updated successfully'
-            ET.SubElement(response_el, 'TransactionID').text = order.transaction_id
-            ET.SubElement(response_el, 'NewStatus').text     = order.status
-            ET.SubElement(response_el, 'Quantity').text      = str(order.quantity)
-            ET.SubElement(response_el, 'TotalAmount').text   = f"{order.total_amount:.2f}"
+        transaction_id = get_text(root, "TransactionID")
 
-    return Response(ET.tostring(response_el, encoding='unicode'), mimetype='application/xml')
+        response_el = ET.Element("OrderResponse")
+
+        with Session() as session:
+            order = session.query(Order).filter_by(transaction_id=transaction_id).first()
+
+            if not order:
+                ET.SubElement(response_el, "Status").text = "Failed"
+                ET.SubElement(response_el, "Message").text = "Transaction not found"
+            else:
+                status = get_text(root, "Status", required=False)
+                quantity = get_text(root, "Quantity", required=False)
+
+                if status is not None:
+                    order.status = status
+
+                if quantity is not None:
+                    order.quantity = int(quantity)
+                    order.total_amount = order.quantity * order.price_per_unit
+
+                session.commit()
+
+                ET.SubElement(response_el, "Status").text = "Success"
+                ET.SubElement(response_el, "Message").text = "Order updated successfully"
+                ET.SubElement(response_el, "TransactionID").text = order.transaction_id
+                ET.SubElement(response_el, "NewStatus").text = order.status
+                ET.SubElement(response_el, "Quantity").text = str(order.quantity)
+                ET.SubElement(response_el, "TotalAmount").text = f"{order.total_amount:.2f}"
+
+        return xml_response(response_el)
+
+    except Exception as e:
+        return error_response("OrderResponse", str(e))
 
 
-@app.route('/delete_order', methods=['POST'])
+@app.route("/delete_order", methods=["POST"])
 def delete_order():
-    """Delete an order by TransactionID."""
-    root   = ET.fromstring(request.data)
-    txn_id = root.find('TransactionID').text
+    """Delete an order by transaction ID."""
+    try:
+        root = ET.fromstring(request.data)
 
-    response_el = ET.Element('OrderResponse')
-    with Session() as s:
-        order = s.query(Order).filter_by(transaction_id=txn_id).first()
-        if not order:
-            ET.SubElement(response_el, 'Status').text  = 'Failed'
-            ET.SubElement(response_el, 'Message').text = 'Transaction not found'
-        else:
-            s.delete(order)
-            s.commit()
-            ET.SubElement(response_el, 'Status').text  = 'Success'
-            ET.SubElement(response_el, 'Message').text = f"Order {txn_id} deleted successfully"
+        transaction_id = get_text(root, "TransactionID")
 
-    return Response(ET.tostring(response_el, encoding='unicode'), mimetype='application/xml')
+        response_el = ET.Element("OrderResponse")
+
+        with Session() as session:
+            order = session.query(Order).filter_by(transaction_id=transaction_id).first()
+
+            if not order:
+                ET.SubElement(response_el, "Status").text = "Failed"
+                ET.SubElement(response_el, "Message").text = "Transaction not found"
+            else:
+                session.delete(order)
+                session.commit()
+
+                ET.SubElement(response_el, "Status").text = "Success"
+                ET.SubElement(response_el, "Message").text = f"Order {transaction_id} deleted successfully"
+
+        return xml_response(response_el)
+
+    except Exception as e:
+        return error_response("OrderResponse", str(e))
 
 
-# ── Entry Point ───────────────────────────────────────────────────────────────
-
+# ── Entry Point ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)
