@@ -1,43 +1,33 @@
 from flask import Flask, request, Response, send_from_directory
 from flask_cors import CORS
 import xml.etree.ElementTree as ET
+import requests
+import time
 from datetime import datetime
 from sqlalchemy import create_engine, Column, String, Integer, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 import os
-import uuid
 
 app = Flask(__name__, static_folder="static")
 CORS(app)
 
-# ── Database Setup ───────────────────────────────────────────────────────────
-# For Render + Railway MySQL:
-# Put your Railway MySQL URL in Render Environment Variables:
-# DATABASE_URL=mysql://root:YOUR_PASSWORD@switchyard.proxy.rlwy.net:18132/railway
-#
-# The code below automatically converts mysql:// to mysql+pymysql://
+# ── Database Setup for XAMPP MySQL ───────────────────────────────────────────
+# XAMPP default:
+# DB_HOST = localhost
+# DB_PORT = 3306
+# DB_USER = root
+# DB_PASSWORD = empty
+# DB_NAME = orm_inventory_db
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DB_HOST = os.environ.get("DB_HOST", "localhost")
+DB_PORT = os.environ.get("DB_PORT", "3306")
+DB_USER = os.environ.get("DB_USER", "root")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+DB_NAME = os.environ.get("DB_NAME", "orm_inventory_db")
 
-if DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
-else:
-    # Local fallback for XAMPP
-    DB_HOST = os.environ.get("DB_HOST", "localhost")
-    DB_PORT = os.environ.get("DB_PORT", "3306")
-    DB_USER = os.environ.get("DB_USER", "root")
-    DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
-    DB_NAME = os.environ.get("DB_NAME", "orm_inventory_db")
+DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-    DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_pre_ping=True,
-    pool_recycle=280
-)
-
+engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, pool_recycle=3600)
 Base = declarative_base()
 Session = sessionmaker(bind=engine)
 
@@ -73,7 +63,8 @@ class Order(Base):
     status = Column(String(20))
 
 
-# Automatically creates tables if they do not exist yet.
+# This creates tables automatically if they do not exist yet.
+# Still recommended to create database first in phpMyAdmin.
 Base.metadata.create_all(engine)
 
 
@@ -103,8 +94,21 @@ def get_text(root, tag, required=True, default=None):
     return element.text.strip()
 
 
-def generate_transaction_id():
-    return f"TXN-{uuid.uuid4().hex[:12].upper()}"
+def post_with_retry(url, data, retries=3, timeout=15):
+    for attempt in range(retries):
+        try:
+            response = requests.post(
+                url,
+                data=data,
+                headers={"Content-Type": "application/xml"},
+                timeout=timeout
+            )
+            return response
+        except requests.exceptions.Timeout:
+            if attempt < retries - 1:
+                time.sleep(3)
+            else:
+                raise
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -114,24 +118,20 @@ def generate_transaction_id():
 @app.route("/inventory", methods=["GET"])
 def get_inventory():
     """Return all inventory items as XML."""
-    try:
-        with Session() as session:
-            items = session.query(InventoryItem).all()
+    with Session() as session:
+        items = session.query(InventoryItem).all()
 
-            root = ET.Element("Inventory")
+        root = ET.Element("Inventory")
 
-            for item in items:
-                item_el = ET.SubElement(root, "Item")
-                ET.SubElement(item_el, "Code").text = item.code
-                ET.SubElement(item_el, "Name").text = item.name
-                ET.SubElement(item_el, "Category").text = item.category
-                ET.SubElement(item_el, "Stock").text = str(item.stock)
-                ET.SubElement(item_el, "Price").text = f"{item.price:.2f}"
+        for item in items:
+            item_el = ET.SubElement(root, "Item")
+            ET.SubElement(item_el, "Code").text = item.code
+            ET.SubElement(item_el, "Name").text = item.name
+            ET.SubElement(item_el, "Category").text = item.category
+            ET.SubElement(item_el, "Stock").text = str(item.stock)
+            ET.SubElement(item_el, "Price").text = f"{item.price:.2f}"
 
-            return xml_response(root)
-
-    except Exception as e:
-        return error_response("InventoryResponse", str(e))
+        return xml_response(root)
 
 
 @app.route("/add_item", methods=["POST"])
@@ -145,12 +145,6 @@ def add_item():
         category = get_text(root, "Category")
         stock = int(get_text(root, "Stock"))
         price = float(get_text(root, "Price"))
-
-        if stock < 0:
-            return error_response("InventoryResponse", "Stock cannot be negative")
-
-        if price < 0:
-            return error_response("InventoryResponse", "Price cannot be negative")
 
         response_el = ET.Element("InventoryResponse")
 
@@ -209,16 +203,10 @@ def edit_item():
                     item.category = category
 
                 if stock is not None:
-                    stock_value = int(stock)
-                    if stock_value < 0:
-                        return error_response("InventoryResponse", "Stock cannot be negative")
-                    item.stock = stock_value
+                    item.stock = int(stock)
 
                 if price is not None:
-                    price_value = float(price)
-                    if price_value < 0:
-                        return error_response("InventoryResponse", "Price cannot be negative")
-                    item.price = price_value
+                    item.price = float(price)
 
                 session.commit()
 
@@ -321,7 +309,8 @@ def process_payment():
         response_el = ET.Element("PaymentResponse")
 
         if amount > 0 and quantity > 0:
-            transaction_id = generate_transaction_id()
+            unique_value = f"{product}{amount}{quantity}{datetime.now().timestamp()}"
+            transaction_id = f"TXN-{abs(hash(unique_value)) % 1000000:06d}"
 
             ET.SubElement(response_el, "Status").text = "Success"
             ET.SubElement(response_el, "TransactionID").text = transaction_id
@@ -350,14 +339,16 @@ def ping():
 # ORDER SERVICE ROUTES
 # ══════════════════════════════════════════════════════════════════════════════
 
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:5000")
+
+
 @app.route("/place_order", methods=["POST"])
 def place_order():
     """
-    Full order pipeline without localhost/internal HTTP request:
-    1. Find product from database
-    2. Check and deduct stock
-    3. Generate payment transaction
-    4. Save order using ORM
+    Full order pipeline:
+    1. Deduct stock using /update_inventory
+    2. Process payment using /process_payment
+    3. Save order using ORM
     """
     try:
         root = ET.fromstring(request.data)
@@ -368,32 +359,42 @@ def place_order():
         if quantity <= 0:
             return error_response("OrderResponse", "Quantity must be greater than zero")
 
-        response_el = ET.Element("OrderResponse")
+        # 1. Deduct inventory
+        inventory_response = post_with_retry(
+            f"{BASE_URL}/update_inventory",
+            data=request.data
+        )
 
+        inventory_root = ET.fromstring(inventory_response.content)
+
+        if inventory_root.find("Status").text != "Success":
+            return Response(inventory_response.content, mimetype="application/xml")
+
+        product = inventory_root.find("Product").text
+        category = inventory_root.find("Category").text
+        price_per_unit = float(inventory_root.find("Price").text)
+        total_amount = quantity * price_per_unit
+
+        # 2. Process payment
+        payment_xml = ET.Element("Payment")
+        ET.SubElement(payment_xml, "Amount").text = str(total_amount)
+        ET.SubElement(payment_xml, "Product").text = product
+        ET.SubElement(payment_xml, "Quantity").text = str(quantity)
+
+        payment_response = post_with_retry(
+            f"{BASE_URL}/process_payment",
+            data=ET.tostring(payment_xml)
+        )
+
+        payment_root = ET.fromstring(payment_response.content)
+
+        if payment_root.find("Status").text != "Success":
+            return Response(payment_response.content, mimetype="application/xml")
+
+        transaction_id = payment_root.find("TransactionID").text
+
+        # 3. Save order to database using ORM
         with Session() as session:
-            item = session.query(InventoryItem).filter_by(code=product_code).first()
-
-            if not item:
-                ET.SubElement(response_el, "Status").text = "Failed"
-                ET.SubElement(response_el, "Message").text = "Product code not found in inventory"
-                return xml_response(response_el)
-
-            if item.stock < quantity:
-                ET.SubElement(response_el, "Status").text = "Failed"
-                ET.SubElement(response_el, "Message").text = f"Insufficient stock. Available: {item.stock} units"
-                return xml_response(response_el)
-
-            product = item.name
-            category = item.category
-            price_per_unit = item.price
-            total_amount = quantity * price_per_unit
-            transaction_id = generate_transaction_id()
-
-            # Deduct inventory stock
-            item.stock -= quantity
-            remaining_stock = item.stock
-
-            # Save order
             new_order = Order(
                 transaction_id=transaction_id,
                 timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -409,18 +410,20 @@ def place_order():
             session.add(new_order)
             session.commit()
 
-            ET.SubElement(response_el, "Status").text = "Success"
-            ET.SubElement(response_el, "TransactionID").text = transaction_id
-            ET.SubElement(response_el, "ProductCode").text = product_code
-            ET.SubElement(response_el, "Product").text = product
-            ET.SubElement(response_el, "Category").text = category
-            ET.SubElement(response_el, "Quantity").text = str(quantity)
-            ET.SubElement(response_el, "PricePerUnit").text = f"{price_per_unit:.2f}"
-            ET.SubElement(response_el, "TotalAmount").text = f"{total_amount:.2f}"
-            ET.SubElement(response_el, "RemainingStock").text = str(remaining_stock)
-            ET.SubElement(response_el, "Message").text = "Order placed and payment processed successfully"
+        # 4. Final response
+        final_response = ET.Element("OrderResponse")
+        ET.SubElement(final_response, "Status").text = "Success"
+        ET.SubElement(final_response, "TransactionID").text = transaction_id
+        ET.SubElement(final_response, "ProductCode").text = product_code
+        ET.SubElement(final_response, "Product").text = product
+        ET.SubElement(final_response, "Category").text = category
+        ET.SubElement(final_response, "Quantity").text = str(quantity)
+        ET.SubElement(final_response, "PricePerUnit").text = f"{price_per_unit:.2f}"
+        ET.SubElement(final_response, "TotalAmount").text = f"{total_amount:.2f}"
+        ET.SubElement(final_response, "RemainingStock").text = inventory_root.find("RemainingStock").text
+        ET.SubElement(final_response, "Message").text = "Order placed and payment processed successfully"
 
-        return xml_response(response_el)
+        return xml_response(final_response)
 
     except Exception as e:
         return error_response("OrderResponse", str(e))
@@ -429,28 +432,24 @@ def place_order():
 @app.route("/order_history", methods=["GET"])
 def order_history():
     """Return all orders as XML."""
-    try:
-        with Session() as session:
-            orders = session.query(Order).all()
+    with Session() as session:
+        orders = session.query(Order).all()
 
-            root = ET.Element("Orders")
+        root = ET.Element("Orders")
 
-            for order in orders:
-                order_el = ET.SubElement(root, "Order")
-                ET.SubElement(order_el, "TransactionID").text = order.transaction_id
-                ET.SubElement(order_el, "Timestamp").text = order.timestamp
-                ET.SubElement(order_el, "ProductCode").text = order.product_code
-                ET.SubElement(order_el, "Product").text = order.product
-                ET.SubElement(order_el, "Category").text = order.category
-                ET.SubElement(order_el, "Quantity").text = str(order.quantity)
-                ET.SubElement(order_el, "PricePerUnit").text = f"{order.price_per_unit:.2f}"
-                ET.SubElement(order_el, "TotalAmount").text = f"{order.total_amount:.2f}"
-                ET.SubElement(order_el, "Status").text = order.status
+        for order in orders:
+            order_el = ET.SubElement(root, "Order")
+            ET.SubElement(order_el, "TransactionID").text = order.transaction_id
+            ET.SubElement(order_el, "Timestamp").text = order.timestamp
+            ET.SubElement(order_el, "ProductCode").text = order.product_code
+            ET.SubElement(order_el, "Product").text = order.product
+            ET.SubElement(order_el, "Category").text = order.category
+            ET.SubElement(order_el, "Quantity").text = str(order.quantity)
+            ET.SubElement(order_el, "PricePerUnit").text = f"{order.price_per_unit:.2f}"
+            ET.SubElement(order_el, "TotalAmount").text = f"{order.total_amount:.2f}"
+            ET.SubElement(order_el, "Status").text = order.status
 
-            return xml_response(root)
-
-    except Exception as e:
-        return error_response("OrderResponse", str(e))
+        return xml_response(root)
 
 
 @app.route("/update_order", methods=["POST"])
@@ -477,12 +476,7 @@ def update_order():
                     order.status = status
 
                 if quantity is not None:
-                    quantity_value = int(quantity)
-
-                    if quantity_value <= 0:
-                        return error_response("OrderResponse", "Quantity must be greater than zero")
-
-                    order.quantity = quantity_value
+                    order.quantity = int(quantity)
                     order.total_amount = order.quantity * order.price_per_unit
 
                 session.commit()
@@ -532,5 +526,4 @@ def delete_order():
 # ── Entry Point ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    debug_mode = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
-    app.run(host="0.0.0.0", port=port, debug=debug_mode)
+    app.run(host="0.0.0.0", port=port, debug=True)
