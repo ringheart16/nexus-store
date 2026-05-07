@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: nexus-store
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: DATABASE_URL
+        sync: false   # Set this manually in the Render dashboard
+      - key: BASE_URL
+        sync: false   # Set to your Render service URL, e.g. https://nexus-store.onrender.com

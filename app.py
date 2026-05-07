@@ -11,23 +11,35 @@ import os
 app = Flask(__name__, static_folder="static")
 CORS(app)
 
-# ── Database Setup for XAMPP MySQL ───────────────────────────────────────────
-# XAMPP default:
-# DB_HOST = localhost
-# DB_PORT = 3306
-# DB_USER = root
-# DB_PASSWORD = empty
-# DB_NAME = orm_inventory_db
+# ── Database Setup ───────────────────────────────────────────────────────────
+# Render / production: set DATABASE_URL as a single environment variable.
+# Format: mysql+pymysql://user:password@host:port/dbname
+#
+# Local (XAMPP) fallback: set individual DB_HOST / DB_PORT / DB_USER /
+# DB_PASSWORD / DB_NAME variables, or just leave defaults for XAMPP.
 
-DB_HOST = os.environ.get("DB_HOST", "localhost")
-DB_PORT = os.environ.get("DB_PORT", "3306")
-DB_USER = os.environ.get("DB_USER", "root")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
-DB_NAME = os.environ.get("DB_NAME", "orm_inventory_db")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+if not DATABASE_URL:
+    DB_HOST = os.environ.get("DB_HOST", "localhost")
+    DB_PORT = os.environ.get("DB_PORT", "3306")
+    DB_USER = os.environ.get("DB_USER", "root")
+    DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+    DB_NAME = os.environ.get("DB_NAME", "orm_inventory_db")
+    DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, pool_recycle=3600)
+# Ensure the driver prefix is correct (Render sometimes provides mysql:// URLs)
+if DATABASE_URL.startswith("mysql://"):
+    DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
+
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=5,
+    max_overflow=2,
+)
 Base = declarative_base()
 Session = sessionmaker(bind=engine)
 
@@ -64,8 +76,12 @@ class Order(Base):
 
 
 # This creates tables automatically if they do not exist yet.
-# Still recommended to create database first in phpMyAdmin.
-Base.metadata.create_all(engine)
+# Still recommended to create database first in phpMyAdmin / Render DB console.
+try:
+    Base.metadata.create_all(engine)
+except Exception as _db_init_err:
+    print(f"[WARNING] Could not create tables at startup: {_db_init_err}")
+    print("[WARNING] Make sure DATABASE_URL is set correctly in your environment.")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
